@@ -42,9 +42,9 @@ def optimize_pt(c, b, comp, pend, vals, model):
                             bounds=b, disp=0)
     return ret[0]
 
-def init(expt_dir, arg_string):
+def init(arg_string):
     args = util.unpack_args(arg_string)
-    return GPEIOptChooser(expt_dir, **args)
+    return GPEIOptChooserNoLogs(**args)
 """
 Chooser module for the Gaussian process expected improvement (EI)
 acquisition function where points are sampled densely in the unit
@@ -52,15 +52,15 @@ hypercube and then a subset of the points are optimized to maximize EI
 over hyperparameter samples.  Slice sampling is used to sample
 Gaussian process hyperparameters.
 """
-class GPEIOptChooser:
+class GPEIOptChooserNoLogs:
 
-    def __init__(self, expt_dir, covar="Matern52", mcmc_iters=10,
+    def __init__(self, covar="Matern52", mcmc_iters=10,
                  pending_samples=100, noiseless=False, burnin=100,
                  grid_subset=20, use_multiprocessing=True):
         self.cov_func        = getattr(gp, covar)
         self.locker          = Locker()
-        self.state_pkl       = os.path.join(expt_dir, self.__module__ + ".pkl")
-        self.stats_file      = os.path.join(expt_dir,
+        self.state_pkl       = os.path.join(self.__module__ + ".pkl")
+        self.stats_file      = os.path.join(
                                    self.__module__ + "_hyperparameters.txt")
         self.mcmc_iters      = int(mcmc_iters)
         self.burnin          = int(burnin)
@@ -81,79 +81,19 @@ class GPEIOptChooser:
         self.use_multiprocessing = bool(int(use_multiprocessing))
 
 
-    def dump_hypers(self):
-        self.locker.lock_wait(self.state_pkl)
+    def dump_hypers(self, hyper_parameters_provider):
 
-        # Write the hyperparameters out to a Pickle.
-        fh = tempfile.NamedTemporaryFile(mode='w', delete=False)
-        cPickle.dump({ 'dims'          : self.D,
+        hyper_parameters_provider.set_state({ 'dims'          : self.D,
                        'ls'            : self.ls,
                        'amp2'          : self.amp2,
                        'noise'         : self.noise,
                        'hyper_samples' : self.hyper_samples,
-                       'mean'          : self.mean },
-                     fh)
-        fh.close()
-
-        # Use an atomic move for better NFS happiness.
-        cmd = 'mv "%s" "%s"' % (fh.name, self.state_pkl)
-        os.system(cmd) # TODO: Should check system-dependent return status.
-
-        self.locker.unlock(self.state_pkl)
-
-        # Write the hyperparameters out to a human readable file as well
-        fh    = open(self.stats_file, 'w')
-        fh.write('Mean Noise Amplitude <length scales>\n')
-        fh.write('-----------ALL SAMPLES-------------\n')
-        meanhyps = 0*np.hstack(self.hyper_samples[0])
-        for i in self.hyper_samples:
-            hyps = np.hstack(i)
-            meanhyps += (1/float(len(self.hyper_samples)))*hyps
-            for j in hyps:
-                fh.write(str(j) + ' ')
-            fh.write('\n')
-
-        fh.write('-----------MEAN OF SAMPLES-------------\n')
-        for j in meanhyps:
-            fh.write(str(j) + ' ')
-        fh.write('\n')
-        fh.close()
-
-    # This passes out html or javascript to display interesting
-    # stats - such as the length scales (sensitivity to various
-    # dimensions).
-    def generate_stats_html(self):
-        # Need this because the model may not necessarily be
-        # initialized when this code is called.
-        if not self._read_only():
-            return 'Chooser not yet ready to display output'
-
-        mean_mean  = np.mean(np.vstack([h[0] for h in self.hyper_samples]))
-        mean_noise = np.mean(np.vstack([h[1] for h in self.hyper_samples]))
-        mean_ls    = np.mean(np.vstack([h[3][np.newaxis,:] for h in self.hyper_samples]),0)
-
-        try:
-            output = (
-                '<br /><span class=\"label label-info\">Estimated mean:</span> ' + str(mean_mean) + 
-                '<br /><span class=\"label label-info\">Estimated noise:</span> ' + str(mean_noise) + 
-                '<br /><br /><span class=\"label label-info\">Inverse parameter sensitivity' +
-                ' - Gaussian Process length scales</span><br /><br />' +
-                '<div id=\"lschart\"></div><script type=\"text/javascript\">' +
-                'var lsdata = [' + ','.join(['%.2f' % i for i in mean_ls]) + '];')
-        except:
-            return 'Chooser not yet ready to display output.'
-
-        output += ('bar_chart("#lschart", lsdata, ' + str(self.max_ls) + ');' +
-                   '</script>')
-        return output
+                       'mean'          : self.mean })
 
     # Read in the chooser from file. Returns True only on success
-    def _read_only(self):
-        if os.path.exists(self.state_pkl):
-            fh    = open(self.state_pkl, 'r')
-            state = cPickle.load(fh)
-            fh.close()
-
+    def _read_only(self, hyper_parameters_state_provider):
+        state = hyper_parameters_state_provider.get_state()
+        if state is not None:
             self.D             = state['dims']
             self.ls            = state['ls']
             self.amp2          = state['amp2']
@@ -165,14 +105,11 @@ class GPEIOptChooser:
 
         return False
 
-    def _real_init(self, dims, values):
-        self.locker.lock_wait(self.state_pkl)
+    def _real_init(self, dims, values, hyper_parameters_provider):
 
         self.randomstate = npr.get_state()
-        if os.path.exists(self.state_pkl):
-            fh    = open(self.state_pkl, 'r')
-            state = cPickle.load(fh)
-            fh.close()
+        state = hyper_parameters_provider.get_state()
+        if state is not None:
 
             self.D             = state['dims']
             self.ls            = state['ls']
@@ -202,8 +139,6 @@ class GPEIOptChooser:
             self.hyper_samples.append((self.mean, self.noise, self.amp2,
                                        self.ls))
 
-        self.locker.unlock(self.state_pkl)
-
     def cov(self, x1, x2=None):
         if x2 is None:
             return self.amp2 * (self.cov_func(self.ls, x1, None)
@@ -215,7 +150,7 @@ class GPEIOptChooser:
     # corresponding objective 'values', pick from the next experiment to
     # run according to the acquisition function.
     def next(self, grid, values, durations,
-             candidates, pending, complete):
+             candidates, pending, complete, hyper_parameters_state_provider):
 
         # Don't bother using fancy GP stuff at first.
         if complete.shape[0] < 2:
@@ -223,7 +158,7 @@ class GPEIOptChooser:
 
         # Perform the real initialization.
         if self.D == -1:
-            self._real_init(grid.shape[1], values[complete])
+            self._real_init(grid.shape[1], values[complete], hyper_parameters_state_provider)
 
         # Grab out the relevant sets.
         comp = grid[complete,:]
@@ -260,7 +195,7 @@ class GPEIOptChooser:
                                  % (mcmc_iter+1, self.mcmc_iters, self.mean,
                                     np.sqrt(self.amp2), self.noise,
                                     np.min(self.ls), np.max(self.ls)))
-            self.dump_hypers()
+            self.dump_hypers(hyper_parameters_state_provider)
 
             b = []# optimization bounds
             for i in xrange(0, cand.shape[1]):
