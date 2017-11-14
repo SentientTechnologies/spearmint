@@ -44,7 +44,7 @@ def optimize_pt(c, b, comp, pend, vals, model):
 
 def init(arg_string):
     args = util.unpack_args(arg_string)
-    return GPEIOptChooserNoLogs(**args)
+    return GPEIOptChooser(**args)
 """
 Chooser module for the Gaussian process expected improvement (EI)
 acquisition function where points are sampled densely in the unit
@@ -52,7 +52,7 @@ hypercube and then a subset of the points are optimized to maximize EI
 over hyperparameter samples.  Slice sampling is used to sample
 Gaussian process hyperparameters.
 """
-class GPEIOptChooserNoLogs:
+class GPEIOptChooser:
 
     def __init__(self, covar="Matern52", mcmc_iters=10,
                  pending_samples=100, noiseless=False, burnin=100,

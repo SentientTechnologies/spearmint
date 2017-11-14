@@ -75,8 +75,9 @@ def one_generation(grid_size, grid_seed, chooser_module, chooser_args, variables
     # Let's print out the best value so far
     if type(values) is not float and len(values) > 0:
         best_val = np.min(values)
+        best_val_index = np.argmin(values)
         best_job = np.argmin(values)
-        sys.stderr.write("Current best: %f (job %d)\n" % (best_val, best_job))
+        sys.stderr.write("Current best: %f at %s (job %d)\n" % (best_val, str(complete[best_val_index]), best_job))
 
     # Now lets get the next job to run
     # First throw out a set of candidates on the unit hypercube
