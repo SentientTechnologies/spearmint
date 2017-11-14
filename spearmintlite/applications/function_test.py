@@ -7,6 +7,8 @@ from spearmintlite.braninhoo.braninhoo import braninhoo
 import collections
 import numpy as np
 import json
+import os
+
 
 if __name__ == '__main__':
 
@@ -17,10 +19,9 @@ if __name__ == '__main__':
 
     hyper_parameters_provider = SimpleHyperParameterStateProvider()
 
-    variables = json.load(open('/Users/asaliou/Documents/workspace/spearmint/spearmintlite/rosenbrocks_valley/config.json'), object_pairs_hook=collections.OrderedDict)
-    #variables = json.load(
-    #    open('/Users/asaliou/Documents/workspace/spearmint/spearmintlite/braninhoo/config.json'),
-    #    object_pairs_hook=collections.OrderedDict)
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    config_file_name = os.path.join(root_dir, os.path.join('braninhoo', 'config.json'))
+    variables = json.load(open(config_file_name), object_pairs_hook=collections.OrderedDict)
 
     nb_iter = 50
     nb_examples_per_iter = 2
@@ -49,7 +50,6 @@ if __name__ == '__main__':
 
         for params_arr in all_params:
             value = rosenbrocks_valley(np.array(params_arr).copy())
-            #value = braninhoo(np.array(params_arr).copy())
             if type(values) is float or values.shape[0] > 0:
                 values = np.vstack((values, value))
                 complete = np.vstack((complete, params_arr))
