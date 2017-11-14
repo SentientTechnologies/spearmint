@@ -19,18 +19,14 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-import os
 from spearmint import gp
-import sys
 from spearmint import util
-import tempfile
 import copy
 import numpy          as np
 import numpy.random   as npr
 import scipy.linalg   as spla
 import scipy.stats    as sps
 import scipy.optimize as spo
-import cPickle
 import multiprocessing
 
 from helpers import *
@@ -58,10 +54,6 @@ class GPEIOptChooser:
                  pending_samples=100, noiseless=False, burnin=100,
                  grid_subset=20, use_multiprocessing=True):
         self.cov_func        = getattr(gp, covar)
-        self.locker          = Locker()
-        self.state_pkl       = os.path.join(self.__module__ + ".pkl")
-        self.stats_file      = os.path.join(
-                                   self.__module__ + "_hyperparameters.txt")
         self.mcmc_iters      = int(mcmc_iters)
         self.burnin          = int(burnin)
         self.needs_burnin    = True
@@ -92,6 +84,7 @@ class GPEIOptChooser:
 
     # Read in the chooser from file. Returns True only on success
     def _read_only(self, hyper_parameters_state_provider):
+
         state = hyper_parameters_state_provider.get_state()
         if state is not None:
             self.D             = state['dims']

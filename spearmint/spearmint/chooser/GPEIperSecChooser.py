@@ -48,15 +48,10 @@ the other over the running time of the algorithm.
 """
 class GPEIperSecChooser:
 
-    def __init__(self, expt_dir, covar="Matern52", mcmc_iters=10,
+    def __init__(self, covar="Matern52", mcmc_iters=10,
                  pending_samples=100, noiseless=False, burnin=100,
                  grid_subset=20):
         self.cov_func        = getattr(gp, covar)
-        self.locker          = Locker()
-        self.state_pkl       = os.path.join(expt_dir, self.__module__ + ".pkl")
-
-        self.stats_file      = os.path.join(expt_dir,
-                                   self.__module__ + "_hyperparameters.txt")
         self.mcmc_iters      = int(mcmc_iters)
         self.burnin          = int(burnin)
         self.needs_burnin    = True
@@ -79,36 +74,22 @@ class GPEIperSecChooser:
 
     # A simple function to dump out hyperparameters to allow for a hot start
     # if the optimization is restarted.
-    def dump_hypers(self):
-        self.locker.lock_wait(self.state_pkl)
+    def dump_hypers(self, hyper_parameters_state_provider):
 
-        # Write the hyperparameters out to a Pickle.
-        fh = tempfile.NamedTemporaryFile(mode='w', delete=False)
-        cPickle.dump({ 'dims'        : self.D,
-                       'ls'          : self.ls,
-                       'amp2'        : self.amp2,
-                       'noise'       : self.noise,
-                       'mean'        : self.mean,
-                       'time_ls'     : self.time_ls,
-                       'time_amp2'   : self.time_amp2,
-                       'time_noise'  : self.time_noise,
-                       'time_mean'   : self.time_mean },
-                     fh)
-        fh.close()
+        hyper_parameters_state_provider.set_state({'dims': self.D,
+                                             'ls': self.ls,
+                                             'amp2': self.amp2,
+                                             'noise': self.noise,
+                                             'mean': self.mean,
+                                             'time_ls': self.time_ls,
+                                             'time_amp2': self.time_amp2,
+                                             'time_noise': self.time_noise,
+                                             'time_mean': self.time_mean})
 
-        # Use an atomic move for better NFS happiness.
-        cmd = 'mv "%s" "%s"' % (fh.name, self.state_pkl)
-        os.system(cmd) # TODO: Should check system-dependent return status.
 
-        self.locker.unlock(self.state_pkl)
-
-    def _real_init(self, dims, values, durations):
-        self.locker.lock_wait(self.state_pkl)
-
-        if os.path.exists(self.state_pkl):
-            fh    = open(self.state_pkl, 'r')
-            state = cPickle.load(fh)
-            fh.close()
+    def _real_init(self, dims, values, durations, hyper_parameters_state_provider):
+        state = hyper_parameters_state_provider.get_state()
+        if state is not None:
 
             self.D          = state['dims']
             self.ls         = state['ls']
@@ -140,7 +121,6 @@ class GPEIperSecChooser:
             self.mean = np.mean(values)
             self.time_mean = np.mean(np.log(durations))
 
-        self.locker.unlock(self.state_pkl)
 
     def cov(self, amp2, ls, x1, x2=None):
         if x2 is None:
@@ -153,7 +133,7 @@ class GPEIperSecChooser:
     # corresponding objective 'values', pick from the next experiment to
     # run according to the acquisition function.
     def next(self, grid, values, durations,
-             candidates, pending, complete):
+             candidates, pending, complete, hyper_parameters_state_provider):
 
         # Don't bother using fancy GP stuff at first.
         if complete.shape[0] < 2:
@@ -162,7 +142,7 @@ class GPEIperSecChooser:
         # Perform the real initialization.
         if self.D == -1:
             self._real_init(grid.shape[1], values[complete],
-                            durations[complete])
+                            durations[complete], hyper_parameters_state_provider)
 
         # Grab out the relevant sets.
         comp = grid[complete,:]
@@ -273,7 +253,7 @@ class GPEIperSecChooser:
             ei = self.compute_ei_per_s(comp, pend, cand, vals, durs)
 
             best_cand = np.argmax(ei)
-            self.dump_hypers()
+            self.dump_hypers(hyper_parameters_state_provider)
 
             if (best_cand >= numcand):
                 return (int(numcand), cand[best_cand,:])

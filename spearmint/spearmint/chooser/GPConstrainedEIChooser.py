@@ -19,18 +19,14 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-import os
 from spearmint import gp
-import sys
 from spearmint import util
-import tempfile
 import numpy          as np
 import math
 import numpy.random   as npr
 import scipy.linalg   as spla
 import scipy.stats    as sps
 import scipy.optimize as spo
-import cPickle
 import matplotlib.pyplot as plt
 import multiprocessing
 import copy
@@ -60,16 +56,11 @@ probability that a point is outside of the constraint space.
 """
 class GPConstrainedEIChooser:
 
-    def __init__(self, expt_dir, covar="Matern52", mcmc_iters=20,
+    def __init__(self, covar="Matern52", mcmc_iters=20,
                  pending_samples=100, noiseless=False, burnin=100,
                  grid_subset=20, constraint_violating_value=np.inf,
                  verbosity=0, visualize2D=False):
         self.cov_func        = getattr(gp, covar)
-        self.locker          = Locker()
-        self.state_pkl       = os.path.join(expt_dir, self.__module__ + ".pkl")
-
-        self.stats_file      = os.path.join(expt_dir,
-                                   self.__module__ + "_hyperparameters.txt")
         self.mcmc_iters      = int(mcmc_iters)
         self.burnin          = int(burnin)
         self.needs_burnin    = True
@@ -98,56 +89,23 @@ class GPConstrainedEIChooser:
 
     # A simple function to dump out hyperparameters to allow for a hot start
     # if the optimization is restarted.
-    def dump_hypers(self):
-        self.locker.lock_wait(self.state_pkl)
+    def dump_hypers(self, hyper_parameters_provider):
 
-        # Write the hyperparameters out to a Pickle.
-        fh = tempfile.NamedTemporaryFile(mode='w', delete=False)
-        cPickle.dump({ 'dims'        : self.D,
-                       'ls'          : self.ls,
-                       'amp2'        : self.amp2,
-                       'noise'       : self.noise,
-                       'mean'        : self.mean,
-                       'constraint_ls'     : self.constraint_ls,
-                       'constraint_amp2'   : self.constraint_amp2,
-                       'constraint_noise'  : self.constraint_noise,
-                       'constraint_mean'   : self.constraint_mean },
-                     fh)
-        fh.close()
+        hyper_parameters_provider.set_state({'dims': self.D,
+                                             'ls': self.ls,
+                                             'amp2': self.amp2,
+                                             'noise': self.noise,
+                                             'mean': self.mean,
+                                             'constraint_ls'     : self.constraint_ls,
+                                             'constraint_amp2': self.constraint_amp2,
+                                             'constraint_noise': self.constraint_noise,
+                                             'constraint_mean': self.constraint_mean})
 
-        # Use an atomic move for better NFS happiness.
-        cmd = 'mv "%s" "%s"' % (fh.name, self.state_pkl)
-        os.system(cmd) # TODO: Should check system-dependent return status.
-
-        self.locker.unlock(self.state_pkl)
-
-        # Write the hyperparameters out to a human readable file as well
-        fh    = open(self.stats_file, 'w')
-        fh.write('Mean Noise Amplitude <length scales>\n')
-        fh.write('-----------ALL SAMPLES-------------\n')
-        meanhyps = 0*np.hstack(self.hyper_samples[0])
-        for i in self.hyper_samples:
-            hyps = np.hstack(i)
-            meanhyps += (1/float(len(self.hyper_samples)))*hyps
-            for j in hyps:
-                fh.write(str(j) + ' ')
-            fh.write('\n')
-
-        fh.write('-----------MEAN OF SAMPLES-------------\n')
-        for j in meanhyps:
-            fh.write(str(j) + ' ')
-        fh.write('\n')
-        fh.close()
-
-    def _real_init(self, dims, values, durations):
-
-        self.locker.lock_wait(self.state_pkl)
+    def _real_init(self, dims, values, durations, hyper_parameters_state_provider):
 
         self.randomstate = npr.get_state()
-        if os.path.exists(self.state_pkl):
-            fh    = open(self.state_pkl, 'r')
-            state = cPickle.load(fh)
-            fh.close()
+        state = hyper_parameters_state_provider.get_state()
+        if state is not None:
 
             self.D                = state['dims']
             self.ls               = state['ls']
@@ -188,7 +146,6 @@ class GPConstrainedEIChooser:
             self.mean = np.mean(values[goodvals])
             self.constraint_mean = 0.5
 
-        self.locker.unlock(self.state_pkl)
 
     def cov(self, amp2, ls, x1, x2=None):
         if x2 is None:
@@ -201,7 +158,7 @@ class GPConstrainedEIChooser:
     # corresponding objective 'values', pick from the next experiment to
     # run according to the acquisition function.
     def next(self, grid, values, durations,
-             candidates, pending, complete):
+             candidates, pending, complete, hyper_parameters_state_provider):
 
         # Don't bother using fancy GP stuff at first.
         if complete.shape[0] < 2:
@@ -237,7 +194,7 @@ class GPConstrainedEIChooser:
         # Perform the real initialization.
         if self.D == -1:
             self._real_init(grid.shape[1], values[complete],
-                            durations[complete])
+                            durations[complete], hyper_parameters_state_provider)
 
         # Spray a set of candidates around the min so far
         numcand = cand.shape[0]
@@ -410,7 +367,7 @@ class GPConstrainedEIChooser:
             overall_ei = self.ei_over_hypers(comp,pend,cand,vals,labels)
             best_cand = np.argmax(np.mean(overall_ei, axis=1))
 
-            self.dump_hypers()
+            self.dump_hypers(hyper_parameters_state_provider)
             if (best_cand >= numcand):
                 return (int(numcand), cand[best_cand,:])
 

@@ -21,17 +21,13 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import os
 from spearmint import gp
-import sys
 from spearmint import util
-import tempfile
 import numpy          as np
 import numpy.random   as npr
 import scipy.linalg   as spla
 import scipy.stats    as sps
 import scipy.optimize as spo
-import cPickle
 
-from Locker  import *
 from helpers import *
 
 
@@ -47,12 +43,9 @@ is used to sample Gaussian process hyperparameters for the GP.
 """
 class GPEIChooser:
 
-    def __init__(self, expt_dir, covar="Matern52", mcmc_iters=10,
+    def __init__(self, covar="Matern52", mcmc_iters=10,
                  pending_samples=100, noiseless=False):
         self.cov_func        = getattr(gp, covar)
-        self.locker          = Locker()
-        self.state_pkl       = os.path.join(expt_dir, self.__module__ + ".pkl")
-
         self.mcmc_iters      = int(mcmc_iters)
         self.pending_samples = pending_samples
         self.D               = -1
@@ -63,32 +56,10 @@ class GPEIChooser:
         self.amp2_scale  = 1    # zero-mean log normal prior
         self.max_ls      = 2    # top-hat prior on length scales
 
-    def __del__(self):
-        self.locker.lock_wait(self.state_pkl)
+    def _real_init(self, dims, values, hyper_parameters_state_provider):
 
-        # Write the hyperparameters out to a Pickle.
-        fh = tempfile.NamedTemporaryFile(mode='w', delete=False)
-        cPickle.dump({ 'dims'   : self.D,
-                       'ls'     : self.ls,
-                       'amp2'   : self.amp2,
-                       'noise'  : self.noise,
-                       'mean'   : self.mean },
-                     fh)
-        fh.close()
-
-        # Use an atomic move for better NFS happiness.
-        cmd = 'mv "%s" "%s"' % (fh.name, self.state_pkl)
-        os.system(cmd) # TODO: Should check system-dependent return status.
-
-        self.locker.unlock(self.state_pkl)
-
-    def _real_init(self, dims, values):
-        self.locker.lock_wait(self.state_pkl)
-
-        if os.path.exists(self.state_pkl):
-            fh    = open(self.state_pkl, 'r')
-            state = cPickle.load(fh)
-            fh.close()
+        state = hyper_parameters_state_provider.get_state()
+        if state is not None:
 
             self.D     = state['dims']
             self.ls    = state['ls']
@@ -112,7 +83,6 @@ class GPEIChooser:
             # Initial mean.
             self.mean = np.mean(values)
 
-        self.locker.unlock(self.state_pkl)
 
     def cov(self, x1, x2=None):
         if x2 is None:
@@ -121,7 +91,7 @@ class GPEIChooser:
         else:
             return self.amp2 * self.cov_func(self.ls, x1, x2)
 
-    def next(self, grid, values, durations, candidates, pending, complete):
+    def next(self, grid, values, durations, candidates, pending, complete, hyper_parameters_state_provider):
 
         # Don't bother using fancy GP stuff at first.
         if complete.shape[0] < 2:
@@ -129,7 +99,7 @@ class GPEIChooser:
 
         # Perform the real initialization.
         if self.D == -1:
-            self._real_init(grid.shape[1], values[complete])
+            self._real_init(grid.shape[1], values[complete], hyper_parameters_state_provider)
 
         # Grab out the relevant sets.
         comp = grid[complete,:]
