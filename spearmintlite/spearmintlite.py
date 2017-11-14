@@ -47,7 +47,7 @@ import optparse
 
 ##############################################################################
 ##############################################################################
-def one_generation(grid_size, grid_seed, chooser_module, chooser_args, variables, evaluation_state, \
+def one_generation(grid_size, grid_seed, chooser, variables, evaluation_state, \
     hyper_parameters_provider):
 
     pending = evaluation_state.get_pending()
@@ -57,8 +57,8 @@ def one_generation(grid_size, grid_seed, chooser_module, chooser_args, variables
 
 
     # Load up the chooser module.
-    module  = importlib.import_module('chooser.' + chooser_module, package='spearmint')
-    chooser = module.init(chooser_args)
+    #module  = importlib.import_module('spearmint.spearmint.chooser.' + chooser_module, package='spearmint')
+    #chooser = module.init(chooser_args)
 
     vkeys = [k for k in variables]
     gmap = GridMap([variables[k] for k in vkeys], grid_size)

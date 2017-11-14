@@ -19,8 +19,8 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from spearmint import gp
-from spearmint import util
+from spearmint.spearmint.spearmint import gp
+from spearmint.spearmint.spearmint import util
 import copy
 import numpy          as np
 import numpy.random   as npr
@@ -30,7 +30,7 @@ import scipy.optimize as spo
 import multiprocessing
 
 from helpers import *
-from Locker  import *
+#from Locker  import *
 
 def optimize_pt(c, b, comp, pend, vals, model):
     ret = spo.fmin_l_bfgs_b(model.grad_optimize_ei_over_hypers,

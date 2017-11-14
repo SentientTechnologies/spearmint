@@ -4,6 +4,7 @@ from spearmintlite.SimpleEvaluationStateProvider import SimpleEvaluationStatePro
 from spearmintlite.SimpleHyperParameterStateProvider import SimpleHyperParameterStateProvider
 from spearmintlite.rosenbrocks_valley.rosenbrock import rosenbrocks_valley
 from spearmintlite.braninhoo.braninhoo import braninhoo
+from spearmint.spearmint.chooser import GPEIOptChooser
 import collections
 import numpy as np
 import json
@@ -14,8 +15,9 @@ if __name__ == '__main__':
 
     grid_size = 2000
     grid_seed = 1
-    chooser_module = 'GPEIOptChooser'
     chooser_args = 'mcmc_iters = 10, noiseless = 1'
+
+    chooser = GPEIOptChooser.init(chooser_args)
 
     hyper_parameters_provider = SimpleHyperParameterStateProvider()
 
@@ -38,7 +40,7 @@ if __name__ == '__main__':
         for j in range(nb_examples_per_iter):
             state_provider = SimpleEvaluationStateProvider(pending, values, complete, durations)
 
-            params = one_generation(grid_size, grid_seed, chooser_module, chooser_args, variables, state_provider, \
+            params = one_generation(grid_size, grid_seed, chooser, variables, state_provider, \
                            hyper_parameters_provider)
 
             params_arr = np.array([param for param in params])
