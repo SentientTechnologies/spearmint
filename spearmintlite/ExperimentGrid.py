@@ -232,7 +232,7 @@ class GridMap:
                                         'type'    : 'enum',
                                         'options' : list(variable['options'])})
             else:
-                raise Exception("Unknown parameter type.")
+                raise Exception("Unknown parameter type %s." % (variable['type']))
         sys.stderr.write("Optimizing over %d dimensions\n" % (self.cardinality))
 
     # Get a list of candidate experiments generated from a sobol sequence

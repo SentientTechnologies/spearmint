@@ -1,2 +1,8 @@
 *.DS_Store
 
+# Vim editor restore files
+*.swp
+
+# Python compilation byproducts
+*.pyc
+
